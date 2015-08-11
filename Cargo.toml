@@ -1,0 +1,10 @@
+[package]
+
+name = "buddhabrot"
+version = "0.0.1"
+authors = ["Blackhole16 <Blackhole16@web.de>"]
+
+[dependencies]
+num = "0.1.25"
+image = "*"
+rand = "0.3"
