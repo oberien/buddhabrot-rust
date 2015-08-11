@@ -147,29 +147,23 @@ fn render() {
     let mut iarr= box [[0u64; WIDTH as usize]; HEIGHT as usize];
     let mut carr = box [[Complex::new(0f64, 0f64); WIDTH as usize]; HEIGHT as usize];
     
-    let mut working = true;
     println!("start accumulating");
-    while working {
-        match file.read(&mut buf) {
-            Ok(size) => {
-                if size == 0 {
-                    working = false;
+    while let Ok(size) = file.read(&mut buf) {
+        if size == 0 {
+            break;
+        }
+        let (z, c, i) = convert(&buf);
+        if i > 1 {
+            // mirror on x-axis
+            for sign in vec![-1f64, 1f64] {
+                let (x, y) = to_pixel(z.re, sign * z.im);
+                if 0 <= x && x < WIDTH && 0 <= y && y < HEIGHT {
+                    let xu = x as usize;
+                    let yu = y as usize;
+                    iarr[yu][xu] += 1;
+                    carr[yu][xu] = carr[yu][xu] + Complex::new(c.re - RSTART, sign * c.im - ISTART);
                 }
-                let (z, c, i) = convert(&buf);
-                if i > 1 {
-                    // mirror on x-axis
-                    for sign in vec![-1f64, 1f64] {
-                        let (x, y) = to_pixel(z.re, sign * z.im);
-                        if 0 <= x && x < WIDTH && 0 <= y && y < HEIGHT {
-                            let xu = x as usize;
-                            let yu = y as usize;
-                            iarr[yu][xu] += 1;
-                            carr[yu][xu] = carr[yu][xu] + Complex::new(c.re - RSTART, sign * c.im - ISTART);
-                        }
-                    }
-                }
-            },
-            Err(_) => { working = false; },
+            }
         }
     }
     println!("end accumulating");
