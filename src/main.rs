@@ -244,13 +244,9 @@ fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
 }
 
 fn to_f64(u: &[u8]) -> f64 {
-    let a = [u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7]];
-    let f: f64 = unsafe { std::mem::transmute(a) };
-    f
+    unsafe { *std::mem::transmute::<_, *const u64>(u.as_ptr()) }
 }
 
 fn to_i32(u: &[u8]) -> i32 {
-    let a = [u[0], u[1], u[2], u[3]];
-    let i: i32 = unsafe { std::mem::transmute(a) };
-    i
+    unsafe { *std::mem::transmute::<_, *const i32>(u.as_ptr()) }
 }
