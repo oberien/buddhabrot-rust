@@ -70,7 +70,7 @@ fn main() {
 
             for i in 0..PPT {
                 let current_progress = (i as f64) / (PPT as f64);
-                if current_progress  > progress + 0.01 {
+                if current_progress > progress + 0.01 {
                     progress = current_progress;
                     println!("Thread #{}: {}", thread_num, progress);
                 }
