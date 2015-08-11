@@ -13,10 +13,10 @@ use std::io::{BufWriter, Write, Read};
 use std::thread;
 use std::sync::mpsc;
 
-const POINTS: i32 = 1000000;
+const POINTS: i32 = 000000;
 const ITERATIONS: i32 = 1000000;
 const DIVERGNUM: f64 = 50f64;
-const THREADS: i32 = 7;
+const THREADS: i32 = 5;
 const BUFSIZE: usize = 1024*1024*128;
 
 const RSTART: f64 = -2f64;
@@ -39,19 +39,22 @@ const DIVERGCOMP: f64 = DIVERGNUM*DIVERGNUM;
 const BUFELEMS: usize = BUFSIZE / (8*4 + 4);
 
 fn main() {
-
     let file = OpenOptions::new().write(true).create(true).append(true).open("data.data").unwrap();
     let mut bw = BufWriter::new(file);
 
     let zero = Complex::new(0f64, 0f64);
 
+    println!("start calculation");
+
     let (tx, rx) = mpsc::channel();
-    for _ in 0..THREADS-1 {
+    for tnum in 0..THREADS-1 {
         let tx = tx.clone();
+        let thread_num = tnum;
         
         thread::spawn(move || {
+            println!("Start thread #{}", thread_num);
             let mut arr = Vec::<(Complex<f64>, Complex<f64>, i32)>::with_capacity(BUFELEMS);
-            arr.reserve(0);
+            unsafe { arr.set_len(BUFELEMS) };
             let mut start: usize = 0;
             let mut next: usize = 1;
 
@@ -59,7 +62,14 @@ fn main() {
             let range_r = Range::new(RSTART, REND);
             let range_i = Range::new(ISTART, IEND);
 
-            for _ in 0..PPT {
+            let mut progress = 0f64;
+
+            for i in 0..PPT {
+                let current_progress = (i as f64) / (PPT as f64);
+                if current_progress  > progress + 0.01 {
+                    progress = current_progress;
+                    println!("Thread #{}: {}", thread_num, progress);
+                }
                 let re = range_r.ind_sample(&mut rng);
                 let im = range_i.ind_sample(&mut rng);
                 let c = Complex::<f64>::new(re, im);
@@ -91,6 +101,7 @@ fn main() {
                 }
             }
             tx.send((arr, start));
+            println!("End thread #{}", thread_num);
         });
     }
     drop(tx);
@@ -115,7 +126,7 @@ fn main() {
         }
     }
 
-    println!("render start");
+    println!("end calculation");
     render();
 }
 
@@ -135,10 +146,10 @@ fn render() {
     let mut file = OpenOptions::new().read(true).open("data.data").unwrap();
     let mut buf = [0u8; 36];
 
-    let mut arr = box [[0u8; WIDTH as usize]; HEIGHT as usize];
+    let mut arr = box [[0u64; WIDTH as usize]; HEIGHT as usize];
     
     let mut working = true;
-    let mut max = 0;
+    let mut max = 0u64;
     println!("start accumulating");
     while working {
         match file.read(&mut buf) {
@@ -147,9 +158,9 @@ fn render() {
                     working = false;
                 }
                 let (z, c, i) = convert(&buf);
-                if i > 1 && RSTART <= c.re && c.re <= REND && ISTART <= c.im && c.im <= IEND {
-                    let x: usize = ((c.re - RSTART) * (WIDTH as f64) / RDIFF) as usize;
-                    let y: usize = ((c.im - ISTART) * (HEIGHT as f64) / IDIFF) as usize;
+                if i > 1 && RSTART <= z.re && z.re <= REND && ISTART <= z.im && z.im <= IEND {
+                    let x: usize = ((z.re - RSTART) * (WIDTH as f64) / RDIFF) as usize;
+                    let y: usize = ((z.im - ISTART) * (HEIGHT as f64) / IDIFF) as usize;
                     let mut tmp = arr[y][x];
                     tmp += 1;
                     if max < tmp {
@@ -164,10 +175,11 @@ fn render() {
     println!("end accumulating");
 
     println!("start render");
+    println!("max: {}", max);
     let imgbuf = ImageBuffer::from_fn(WIDTH as u32, HEIGHT as u32, |x,y| {
         let i = arr[y as usize][x as usize] as f64;
         let id = i / max as f64;
-        let ir = id.powf(0.1);
+        let ir = id.powf(0.25);
         let ic = ir * 255f64;
         image::Luma([ic as u8]) 
     });
@@ -176,8 +188,10 @@ fn render() {
     // Save the image as “fractal.png”
     let mut file = File::create("fractal.png").unwrap();
 
+    println!("start save");
     // We must indicate the image’s color type and what format to save as
     image::ImageLuma8(imgbuf).save(&mut file, image::PNG);
+    println!("end save");
 }
 
 fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
