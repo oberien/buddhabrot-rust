@@ -111,23 +111,17 @@ fn main() {
     drop(tx);
 
     let mut working = true;
-    while working {
-        match rx.recv() {
-            Ok(tuple) => {
-                let (arr, end) = tuple;
-                println!("start writing {} hits", end);
-                for i in 0..end {
-                    let (z, c, i) = *unsafe { arr.get_unchecked(i) };
-                    bw.write(&to_bytes_f64(z.re));
-                    bw.write(&to_bytes_f64(z.im));
-                    bw.write(&to_bytes_f64(c.re));
-                    bw.write(&to_bytes_f64(c.im));
-                    bw.write(&to_bytes_i32(i));
-                }
-                println!("end writing");
-            },
-            Err(_) => {working = false;},
+    while let Ok((arr, end)) = rx.recv() {
+        println!("start writing {} hits", end);
+        for i in 0..end {
+            let (z, c, i) = *unsafe { arr.get_unchecked(i) };
+            bw.write(&to_bytes_f64(z.re));
+            bw.write(&to_bytes_f64(z.im));
+            bw.write(&to_bytes_f64(c.re));
+            bw.write(&to_bytes_f64(c.im));
+            bw.write(&to_bytes_i32(i));
         }
+        println!("end writing");
     }
 
     println!("end calculation");
