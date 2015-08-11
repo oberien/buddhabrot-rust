@@ -244,9 +244,11 @@ fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
 }
 
 fn to_f64(u: &[u8]) -> f64 {
+    assert!(u.len() >= std::mem::size_of<f64>());
     unsafe { *std::mem::transmute::<_, *const u64>(u.as_ptr()) }
 }
 
 fn to_i32(u: &[u8]) -> i32 {
+    assert!(u.len() >= std::mem::size_of<i32>());
     unsafe { *std::mem::transmute::<_, *const i32>(u.as_ptr()) }
 }
