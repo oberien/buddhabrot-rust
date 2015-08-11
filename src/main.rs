@@ -113,8 +113,7 @@ fn main() {
     let mut working = true;
     while let Ok((arr, end)) = rx.recv() {
         println!("start writing {} hits", end);
-        for i in 0..end {
-            let (z, c, i) = *unsafe { arr.get_unchecked(i) };
+        for (z, c, i) in arr[0..end] {
             bw.write(&to_bytes_f64(z.re));
             bw.write(&to_bytes_f64(z.im));
             bw.write(&to_bytes_f64(c.re));
