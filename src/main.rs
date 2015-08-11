@@ -85,8 +85,10 @@ fn main() {
                     }
                 }
             }
+            tx.send((arr, next));
         });
     }
+    drop(tx);
 
     let mut working = true;
     while working {
