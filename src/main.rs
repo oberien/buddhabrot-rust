@@ -12,6 +12,7 @@ use std::fs::{OpenOptions, File};
 use std::io::{BufWriter, Write, Read};
 use std::thread;
 use std::sync::mpsc;
+use std::cmp::Ordering;
 
 const POINTS: i32 = 000000;
 const ITERATIONS: i32 = 1000000;
@@ -19,18 +20,21 @@ const DIVERGNUM: f64 = 50f64;
 const THREADS: i32 = 5;
 const BUFSIZE: usize = 1024*1024*128;
 
-const RSTART: f64 = -2f64;
-const REND: f64 = 2f64;
-const RDIFF: f64 = REND - RSTART;
+const WIDTH: i32 = 1920;
+const HEIGHT: i32 = 1080;
+
+const RSTART: f64 = 1.25f64;
+const REND: f64 = 1.5f64;
+
+const EPS: f64 = 1e-10;
 
 const PPT: i32 = POINTS/THREADS;
 
+const RDIFF: f64 = REND - RSTART;
 const IDIFF: f64 = RDIFF*9f64/16f64;
 const IEND: f64 = IDIFF/2f64;
 const ISTART: f64 = -IEND;
 
-const WIDTH: i32 = 1920;
-const HEIGHT: i32 = 1080;
 
 const RD: f64 = RDIFF / WIDTH as f64;
 const ID: f64 = IDIFF / HEIGHT as f64;
@@ -110,9 +114,8 @@ fn main() {
     while working {
         match rx.recv() {
             Ok(tuple) => {
-                //let arr: Vec<(Complex<f64>, Complex<f64>, i32)> = tuple.0;
-                //let end: i32 = tuple.1;
                 let (arr, end) = tuple;
+                println!("start writing {} hits", end);
                 for i in 0..end {
                     let (z, c, i) = *unsafe { arr.get_unchecked(i) };
                     bw.write(&to_bytes_f64(z.re));
@@ -121,6 +124,7 @@ fn main() {
                     bw.write(&to_bytes_f64(c.im));
                     bw.write(&to_bytes_i32(i));
                 }
+                println!("end writing");
             },
             Err(_) => {working = false;},
         }
@@ -146,10 +150,10 @@ fn render() {
     let mut file = OpenOptions::new().read(true).open("data.data").unwrap();
     let mut buf = [0u8; 36];
 
-    let mut arr = box [[0u64; WIDTH as usize]; HEIGHT as usize];
+    let mut iarr= box [[0u64; WIDTH as usize]; HEIGHT as usize];
+    let mut carr = box [[Complex::new(0f64, 0f64); WIDTH as usize]; HEIGHT as usize];
     
     let mut working = true;
-    let mut max = 0u64;
     println!("start accumulating");
     while working {
         match file.read(&mut buf) {
@@ -158,30 +162,74 @@ fn render() {
                     working = false;
                 }
                 let (z, c, i) = convert(&buf);
-                if i > 1 && RSTART <= z.re && z.re <= REND && ISTART <= z.im && z.im <= IEND {
-                    let x: usize = ((z.re - RSTART) * (WIDTH as f64) / RDIFF) as usize;
-                    let y: usize = ((z.im - ISTART) * (HEIGHT as f64) / IDIFF) as usize;
-                    let mut tmp = arr[y][x];
-                    tmp += 1;
-                    if max < tmp {
-                        max = tmp;
+                if i > 1 {
+                    // mirror on x-axis
+                    for sign in vec![-1f64, 1f64] {
+                        let (x, y) = to_pixel(z.re, sign * z.im);
+                        if 0 <= x && x < WIDTH && 0 <= y && y < HEIGHT {
+                            let xu = x as usize;
+                            let yu = y as usize;
+                            iarr[yu][xu] += 1;
+                            carr[yu][xu] = carr[yu][xu] + Complex::new(c.re - RSTART, sign * c.im - ISTART);
+                        }
                     }
-                    arr[y][x] = tmp;
-                } 
+                }
             },
             Err(_) => { working = false; },
         }
     }
     println!("end accumulating");
+    
+    println!("start calcRGB");
+    let mut rv = Vec::<f64>::with_capacity((WIDTH * HEIGHT) as usize);
+    let mut gv = Vec::<f64>::with_capacity((WIDTH * HEIGHT) as usize);
+    let mut bv = Vec::<f64>::with_capacity((WIDTH * HEIGHT) as usize);
+    
+    for y in 0..carr.len() {
+        let sub = carr[y];
+        for x in 0..sub.len() {
+            let c = sub[x];
+            rv.push(c.re);
+            gv.push(c.im);
+            bv.push((iarr[y as usize][x as usize] as f64)*RDIFF-c.re);
+        }
+    }
+    let cmp_func = |a: &f64, b: &f64| {
+        let delta = a - b;
+        if delta.abs() < EPS {
+            Ordering::Equal
+        } else if delta < 0f64 {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    };
+    
+    rv.sort_by(&cmp_func);
+    gv.sort_by(&cmp_func);
+    bv.sort_by(&cmp_func);
+    
+    println!("end calcRGB");
 
     println!("start render");
-    println!("max: {}", max);
     let imgbuf = ImageBuffer::from_fn(WIDTH as u32, HEIGHT as u32, |x,y| {
-        let i = arr[y as usize][x as usize] as f64;
-        let id = i / max as f64;
-        let ir = id.powf(0.25);
-        let ic = ir * 255f64;
-        image::Luma([ic as u8]) 
+        let c = carr[y as usize][x as usize];
+        let mut r = rv.binary_search_by(|a: &f64| { cmp_func(a, &c.re) }).unwrap() as f64;
+        let mut g = gv.binary_search_by(|a: &f64| { cmp_func(a, &c.im) }).unwrap() as f64;
+        let mut b = bv.binary_search_by(|a: &f64| { cmp_func(a, &((iarr[y as usize][x as usize] as f64)*RDIFF-c.re)) }).unwrap() as f64;
+        r /= (WIDTH*HEIGHT) as f64;
+        g /= (WIDTH*HEIGHT) as f64;
+        b /= (WIDTH*HEIGHT) as f64;
+        let ru = (r.powi(10) * 255f64) as u8;
+        let gu = (g.powi(10) * 255f64) as u8;
+        let bu = (b.powi(10) * 255f64) as u8;
+        
+        image::Rgb([ru, gu, bu])
+        
+        //let id = i  as f64;
+        //let ir = id.powf(0.25);
+        //let ic = ir * 255f64;
+        //image::Luma([ic as u8]) 
     });
     println!("end render");
 
@@ -190,8 +238,14 @@ fn render() {
 
     println!("start save");
     // We must indicate the image’s color type and what format to save as
-    image::ImageLuma8(imgbuf).save(&mut file, image::PNG);
+    image::ImageRgb8(imgbuf).save(&mut file, image::PNG);
     println!("end save");
+}
+
+fn to_pixel(re: f64, im: f64) -> (i32, i32) {
+    let x = ((re - RSTART) * (WIDTH as f64) / RDIFF) as i32;
+    let y = ((im - ISTART) * (HEIGHT as f64) / IDIFF) as i32;
+    (x, y)
 }
 
 fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
