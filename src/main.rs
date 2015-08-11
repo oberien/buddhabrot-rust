@@ -237,18 +237,15 @@ fn to_pixel(re: f64, im: f64) -> (i32, i32) {
 }
 
 fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
-    let z = Complex::new(to_f64(&u[0..8]), to_f64(&u[8..16]));
-    let c = Complex::new(to_f64(&u[16..24]), to_f64(&u[24..32]));
-    let i = to_i32(&u[32..36]);
-    (z, c, i)
+    unsafe {
+        let z = Complex::new(swag_conv(&u[0..8]), swag_conv(&u[8..16]));
+        let c = Complex::new(swag_conv(&u[16..24]), swag_conv(&u[24..32]));
+        let i = swag_conv(&u[32..36]);
+        (z, c, i)
+    }
 }
 
-fn to_f64(u: &[u8]) -> f64 {
-    assert!(u.len() >= std::mem::size_of<f64>());
-    unsafe { *std::mem::transmute::<_, *const u64>(u.as_ptr()) }
-}
-
-fn to_i32(u: &[u8]) -> i32 {
-    assert!(u.len() >= std::mem::size_of<i32>());
-    unsafe { *std::mem::transmute::<_, *const i32>(u.as_ptr()) }
+unsafe fn swag_conv<Swag : Sized + Copy>(u: &[u8]) -> Swag {
+    assert!(u.len() >= std::mem::size_of::<Swag>());
+    *std::mem::transmute::<_, *const Swag>(u.as_ptr())
 }
