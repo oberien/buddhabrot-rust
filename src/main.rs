@@ -238,14 +238,14 @@ fn to_pixel(re: f64, im: f64) -> (i32, i32) {
 
 fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
     unsafe {
-        let z = Complex::new(swag_conv(&u[0..8]), swag_conv(&u[8..16]));
-        let c = Complex::new(swag_conv(&u[16..24]), swag_conv(&u[24..32]));
-        let i = swag_conv(&u[32..36]);
+        let z = Complex::new(from_bytes(&u[0..8]), from_bytes(&u[8..16]));
+        let c = Complex::new(from_bytes(&u[16..24]), from_bytes(&u[24..32]));
+        let i = from_bytes(&u[32..36]);
         (z, c, i)
     }
 }
 
-unsafe fn swag_conv<Swag : Sized + Copy>(u: &[u8]) -> Swag {
-    assert!(u.len() >= std::mem::size_of::<Swag>());
-    *std::mem::transmute::<_, *const Swag>(u.as_ptr())
+unsafe fn from_bytes<T: Sized + Copy>(u: &[u8]) -> T {
+    assert!(u.len() >= std::mem::size_of::<T>());
+    *std::mem::transmute::<_, *const T>(u.as_ptr())
 }
