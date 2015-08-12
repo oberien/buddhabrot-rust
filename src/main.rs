@@ -234,20 +234,15 @@ fn to_pixel(re: f64, im: f64) -> (i32, i32) {
 }
 
 fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
-    let z = Complex::new(to_f64(&u[0..8]), to_f64(&u[8..16]));
-    let c = Complex::new(to_f64(&u[16..24]), to_f64(&u[24..32]));
-    let i = to_i32(&u[32..36]);
-    (z, c, i)
+    unsafe {
+        let z = Complex::new(from_bytes(&u[0..8]), from_bytes(&u[8..16]));
+        let c = Complex::new(from_bytes(&u[16..24]), from_bytes(&u[24..32]));
+        let i = from_bytes(&u[32..36]);
+        (z, c, i)
+    }
 }
 
-fn to_f64(u: &[u8]) -> f64 {
-    let a = [u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7]];
-    let f: f64 = unsafe { std::mem::transmute(a) };
-    f
-}
-
-fn to_i32(u: &[u8]) -> i32 {
-    let a = [u[0], u[1], u[2], u[3]];
-    let i: i32 = unsafe { std::mem::transmute(a) };
-    i
+unsafe fn from_bytes<T: Sized + Copy>(u: &[u8]) -> T {
+    assert!(u.len() >= std::mem::size_of::<T>());
+    *std::mem::transmute::<_, *const T>(u.as_ptr())
 }
