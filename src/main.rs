@@ -4,6 +4,10 @@ extern crate num;
 extern crate rand;
 extern crate image;
 
+mod structures;
+
+use structures::Hit;
+
 use num::complex::Complex;
 use rand::distributions::{Range, IndependentSample};
 use image::ImageBuffer;
@@ -23,8 +27,8 @@ const BUFSIZE: usize = 1024*1024*128;
 const WIDTH: i32 = 1920;
 const HEIGHT: i32 = 1080;
 
-const RSTART: f64 = 1.25f64;
-const REND: f64 = 1.5f64;
+const RSTART: f64 = -2f64;
+const REND: f64 = 2f64;
 
 const EPS: f64 = 1e-10;
 
@@ -34,10 +38,6 @@ const RDIFF: f64 = REND - RSTART;
 const IDIFF: f64 = RDIFF*9f64/16f64;
 const IEND: f64 = IDIFF/2f64;
 const ISTART: f64 = -IEND;
-
-
-const RD: f64 = RDIFF / WIDTH as f64;
-const ID: f64 = IDIFF / HEIGHT as f64;
 
 const DIVERGCOMP: f64 = DIVERGNUM*DIVERGNUM;
 const BUFELEMS: usize = BUFSIZE / (8*4 + 4);
@@ -57,7 +57,7 @@ fn main() {
         
         thread::spawn(move || {
             println!("Start thread #{}", thread_num);
-            let mut arr = Vec::<(Complex<f64>, Complex<f64>, i32)>::with_capacity(BUFELEMS);
+            let mut arr = Vec::<Hit>::with_capacity(BUFELEMS);
             unsafe { arr.set_len(BUFELEMS) };
             let mut start: usize = 0;
             let mut next: usize = 1;
@@ -70,7 +70,7 @@ fn main() {
 
             for i in 0..PPT {
                 let current_progress = (i as f64) / (PPT as f64);
-                if current_progress > progress + 0.01 {
+                if current_progress  > progress + 0.01 {
                     progress = current_progress;
                     println!("Thread #{}: {}", thread_num, progress);
                 }
@@ -80,14 +80,14 @@ fn main() {
                 let mut z = zero;
                 {
                     let ptr = unsafe { arr.get_unchecked_mut(start) };
-                    *ptr = (Complex::new(0f64, 0f64), c, 0);
+                    *ptr = Hit::new(zero, c, 0);
                 }
                 next = start + 1;
                 for i in 1..ITERATIONS {
                     z = z*z + c;
                     {
                         let ptr = unsafe { arr.get_unchecked_mut(next) };
-                        *ptr = (z, c, i);
+                        *ptr = Hit::new(z, c, i);
                     }
                     next += 1;
 
@@ -108,18 +108,16 @@ fn main() {
             println!("End thread #{}", thread_num);
         });
     }
+    // shouldn't hold the last sender, otherwise the program will not stop
     drop(tx);
 
-    let mut working = true;
     while let Ok((arr, end)) = rx.recv() {
         println!("start writing {} hits", end);
-        for (z, c, i) in arr[0..end] {
-            bw.write(&to_bytes_f64(z.re));
-            bw.write(&to_bytes_f64(z.im));
-            bw.write(&to_bytes_f64(c.re));
-            bw.write(&to_bytes_f64(c.im));
-            bw.write(&to_bytes_i32(i));
-        }
+        let slice = &arr[0..end];
+        let ptr = slice.as_ptr() as *const u8;
+        let size = slice.len() * std::mem::size_of::<Hit>();
+        let uarr = unsafe { std::slice::from_raw_parts(ptr, size) };
+        bw.write(uarr);
         println!("end writing");
     }
 
@@ -127,13 +125,6 @@ fn main() {
     render();
 }
 
-fn to_bytes_f64(f: f64) -> [u8; 8] {
-    unsafe { std::mem::transmute(f) }
-}
-
-fn to_bytes_i32(i: i32) -> [u8; 4] {
-    unsafe { std::mem::transmute(i) }
-}
 
 fn render() {
     // ci, cr, count
@@ -146,19 +137,20 @@ fn render() {
     
     println!("start accumulating");
     while let Ok(size) = file.read(&mut buf) {
+        // FIXME: read until buffer is really full
         if size == 0 {
             break;
         }
-        let (z, c, i) = convert(&buf);
-        if i > 1 {
+        let hit = Hit::from_bytes(&buf);
+        if hit.i > 1 {
             // mirror on x-axis
             for sign in vec![-1f64, 1f64] {
-                let (x, y) = to_pixel(z.re, sign * z.im);
+                let (x, y) = to_pixel(hit.z.re, sign * hit.z.im);
                 if 0 <= x && x < WIDTH && 0 <= y && y < HEIGHT {
                     let xu = x as usize;
                     let yu = y as usize;
                     iarr[yu][xu] += 1;
-                    carr[yu][xu] = carr[yu][xu] + Complex::new(c.re - RSTART, sign * c.im - ISTART);
+                    carr[yu][xu] = carr[yu][xu] + Complex::new(hit.c.re - RSTART, sign * hit.c.im - ISTART);
                 }
             }
         }
@@ -170,14 +162,10 @@ fn render() {
     let mut gv = Vec::<f64>::with_capacity((WIDTH * HEIGHT) as usize);
     let mut bv = Vec::<f64>::with_capacity((WIDTH * HEIGHT) as usize);
     
-    for y in 0..carr.len() {
-        let sub = carr[y];
-        for x in 0..sub.len() {
-            let c = sub[x];
-            rv.push(c.re);
-            gv.push(c.im);
-            bv.push((iarr[y as usize][x as usize] as f64)*RDIFF-c.re);
-        }
+    for (c, &i) in carr.iter().zip(iarr.iter()).flat_map(|(csub, isub)| csub.iter().zip(isub.iter())) {
+        rv.push(c.re);
+        gv.push(c.im);
+        bv.push(i as f64);
     }
     let cmp_func = |a: &f64, b: &f64| {
         let delta = a - b;
@@ -201,7 +189,7 @@ fn render() {
         let c = carr[y as usize][x as usize];
         let mut r = rv.binary_search_by(|a: &f64| { cmp_func(a, &c.re) }).unwrap() as f64;
         let mut g = gv.binary_search_by(|a: &f64| { cmp_func(a, &c.im) }).unwrap() as f64;
-        let mut b = bv.binary_search_by(|a: &f64| { cmp_func(a, &((iarr[y as usize][x as usize] as f64)*RDIFF-c.re)) }).unwrap() as f64;
+        let mut b = bv.binary_search_by(|a: &f64| { cmp_func(a, &(iarr[y as usize][x as usize] as f64)) }).unwrap() as f64;
         r /= (WIDTH*HEIGHT) as f64;
         g /= (WIDTH*HEIGHT) as f64;
         b /= (WIDTH*HEIGHT) as f64;
@@ -210,11 +198,6 @@ fn render() {
         let bu = (b.powi(10) * 255f64) as u8;
         
         image::Rgb([ru, gu, bu])
-        
-        //let id = i  as f64;
-        //let ir = id.powf(0.25);
-        //let ic = ir * 255f64;
-        //image::Luma([ic as u8]) 
     });
     println!("end render");
 
@@ -233,16 +216,3 @@ fn to_pixel(re: f64, im: f64) -> (i32, i32) {
     (x, y)
 }
 
-fn convert(u: &[u8; 36]) -> (Complex<f64>, Complex<f64>, i32) {
-    unsafe {
-        let z = Complex::new(from_bytes(&u[0..8]), from_bytes(&u[8..16]));
-        let c = Complex::new(from_bytes(&u[16..24]), from_bytes(&u[24..32]));
-        let i = from_bytes(&u[32..36]);
-        (z, c, i)
-    }
-}
-
-unsafe fn from_bytes<T: Sized + Copy>(u: &[u8]) -> T {
-    assert!(u.len() >= std::mem::size_of::<T>());
-    *std::mem::transmute::<_, *const T>(u.as_ptr())
-}
