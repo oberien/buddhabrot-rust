@@ -128,13 +128,11 @@ fn main() {
 }
 
 fn to_bytes_f64(f: f64) -> [u8; 8] {
-    let raw_bytes: [u8; 8] = unsafe {std::mem::transmute(f)};
-    raw_bytes
+    unsafe { std::mem::transmute(f) }
 }
 
 fn to_bytes_i32(i: i32) -> [u8; 4] {
-    let raw_bytes: [u8; 4] = unsafe {std::mem::transmute(i)};
-    raw_bytes
+    unsafe { std::mem::transmute(i) }
 }
 
 fn render() {
