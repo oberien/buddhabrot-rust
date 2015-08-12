@@ -60,7 +60,7 @@ fn main() {
             let mut arr = Vec::<Hit>::with_capacity(BUFELEMS);
             unsafe { arr.set_len(BUFELEMS) };
             let mut start: usize = 0;
-            let mut next: usize = 1;
+            let mut next;
 
             let mut rng = rand::thread_rng();
             let range_r = Range::new(RSTART, REND);
@@ -94,17 +94,15 @@ fn main() {
                     if z.norm_sqr() > DIVERGCOMP {
                         if BUFELEMS - next >= ITERATIONS as usize {
                             start = next;
-                            next += 1;
                         } else {
-                            tx.send((arr.clone(), next));
+                            tx.send((arr.clone(), next)).unwrap();
                             start = 0;
-                            next = 1;
                         }
                         break;
                     }
                 }
             }
-            tx.send((arr, start));
+            tx.send((arr, start)).unwrap();
             println!("End thread #{}", thread_num);
         });
     }
@@ -117,7 +115,7 @@ fn main() {
         let ptr = slice.as_ptr() as *const u8;
         let size = slice.len() * std::mem::size_of::<Hit>();
         let uarr = unsafe { std::slice::from_raw_parts(ptr, size) };
-        bw.write(uarr);
+        bw.write(uarr).unwrap();
         println!("end writing");
     }
 
@@ -206,7 +204,7 @@ fn render() {
 
     println!("start save");
     // We must indicate the image’s color type and what format to save as
-    image::ImageRgb8(imgbuf).save(&mut file, image::PNG);
+    image::ImageRgb8(imgbuf).save(&mut file, image::PNG).unwrap();
     println!("end save");
 }
 
