@@ -1,4 +1,6 @@
-use num::complex::Complex;
+extern crate num;
+
+use self::num::complex::Complex;
 use std;
 
 #[repr(packed)]

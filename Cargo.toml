@@ -8,3 +8,4 @@ authors = ["Blackhole16 <Blackhole16@web.de>"]
 num = "0.1.25"
 image = "*"
 rand = "0.3"
+nix = "*"
