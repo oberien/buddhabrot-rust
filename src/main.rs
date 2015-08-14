@@ -9,6 +9,7 @@ mod consts;
 
 fn main() {
     calc::calc();
-    render::render();
+    //render::render();
+    //render::render_animation();
 }
 
