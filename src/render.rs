@@ -108,13 +108,11 @@ fn accumulate_n(file: &mut File, num: &i32, iarr: &mut Box<[[u64; WIDTH as usize
 
     for _ in 0..*num {
         let size = match file.read(&mut buf) {
+            Ok(0) => break, // FIXME: read until buffer is really full
             Ok(size) => size,
             Err(_) => break,
         };
-        // FIXME: read until buffer is really full
-        if size == 0 {
-            break;
-        }
+
         let hit = Hit::from_bytes(&buf);
         if hit.i > 1 {
             // mirror on x-axis
