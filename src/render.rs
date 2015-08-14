@@ -143,7 +143,7 @@ fn histogram(rv: &mut Vec<f64>, gv: &mut Vec<f64>, bv: &mut Vec<f64>) {
 }
 
 fn save_image(img: DynamicImage, name: &str) {
-    // Save the image as the file supplied with "name"
+    // Save the image to the file with given name
     let mut file = File::create(name).unwrap();
 
     // We must indicate the image’s color type and what format to save as
